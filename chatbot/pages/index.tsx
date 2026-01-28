@@ -9,7 +9,7 @@ const ChatbotWidget = dynamic(() => import("../components/ChatbotWidget"), {
 export default function Home() {
   return (
     <>
-      <ChatbotWidget apiBaseUrl="http://localhost:8000/ai" userId={"user-1"} />
+      <ChatbotWidget apiBaseUrl="http://localhost:8000" userId={"user-1"} />
       hi cả nhà
     </>
   );

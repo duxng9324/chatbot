@@ -1,109 +1,50 @@
 'use client'
 
 import { useState, useEffect, useRef } from "react";
-// Giả sử bạn đã có component này để render markdown
-// Nếu chưa có, thay thế bằng thẻ <p>{content}</p> ở dưới
-import MarkdownMessage from "./MarkdownMessage"; 
+import MarkdownMessage from "./MarkdownMessage";
+import { useChatbot } from "../hooks/useChatbot"; 
 
 export interface ChatbotWidgetProps {
-  userId?: string;     // ID user (ví dụ: "guest" hoặc "user-1")
-  apiBaseUrl: string;  // URL backend (ví dụ: "http://localhost:8000")
+  userId?: string;
+  apiBaseUrl: string;
 }
 
-interface ChatMessage {
-  role: "user" | "bot";
-  message: string;
-}
+export default function ChatbotWidget({ userId, apiBaseUrl }: ChatbotWidgetProps) {
+  const { messages, sendMessage, loading } = useChatbot({ 
+    userId, 
+    apiBaseUrl 
+  });
 
-export default function ChatbotWidget({ userId = "guest", apiBaseUrl }: ChatbotWidgetProps) {
-  // --- STATE ---
+  // --- 2. UI STATE (Chỉ những gì liên quan đến hiển thị) ---
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [loading, setLoading] = useState(false);
-  
-  // Ref để auto scroll xuống cuối
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // --- 1. LOAD LỊCH SỬ CHAT KHI MỞ TRANG ---
-  useEffect(() => {
-    if (!userId) return;
-
-    const fetchHistory = async () => {
-      try {
-        const res = await fetch(`${apiBaseUrl}/history/${userId}`);
-        const data = await res.json();
-
-        if (data.history && Array.isArray(data.history)) {
-          // 🔄 QUAN TRỌNG: Map dữ liệu từ Backend -> Frontend
-          // Backend trả về: { role: "ai", content: "..." }
-          // Frontend cần:   { role: "bot", message: "..." }
-          const mappedHistory = data.history.map((msg: any) => ({
-            role: msg.role === "ai" ? "bot" : "user",
-            message: msg.content
-          }));
-          setMessages(mappedHistory);
-        }
-      } catch (error) {
-        console.error("Lỗi tải lịch sử:", error);
-      }
-    };
-
-    fetchHistory();
-  }, [userId, apiBaseUrl]);
-
-  // --- 2. AUTO SCROLL ---
+  // --- 3. AUTO SCROLL (Vẫn giữ ở UI vì liên quan đến DOM) ---
   useEffect(() => {
     if (open) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, open, loading]);
 
-  // --- 3. GỬI TIN NHẮN ---
-  const handleSendMessage = async () => {
+  // --- 4. WRAPPER GỬI TIN ---
+  const handleSendClick = () => {
     if (!inputValue.trim() || loading) return;
-
-    const userText = inputValue.trim();
-    setInputValue(""); // Xóa ô nhập liệu
-
-    // 1. Thêm tin nhắn User vào UI ngay lập tức
-    const userMsg: ChatMessage = { role: "user", message: userText };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-
-    try {
-      // 2. Gọi API Backend
-      const res = await fetch(`${apiBaseUrl}/ai/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userText,
-          user_id: userId,
-        }),
-      });
-
-      const data = await res.json();
-
-      // 3. Thêm phản hồi AI vào UI
-      const botMsg: ChatMessage = { role: "bot", message: data.reply };
-      setMessages((prev) => [...prev, botMsg]);
-
-    } catch (error) {
-      console.error("Lỗi chat:", error);
-      const errorMsg: ChatMessage = { role: "bot", message: "⚠️ Mất kết nối server!" };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-    }
+    
+    // Gọi hàm từ hook
+    sendMessage(inputValue.trim());
+    
+    // Xóa ô nhập liệu ngay lập tức
+    setInputValue(""); 
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSendMessage();
+    if (e.key === "Enter") handleSendClick();
   };
 
-  // ================= RENDER UI =================
+  // ================= RENDER UI (GIỮ NGUYÊN) =================
 
-  // --- TRẠNG THÁI ĐÓNG (NÚT BẤM TRÒN) ---
+  // --- TRẠNG THÁI ĐÓNG ---
   if (!open) {
     return (
       <button
@@ -115,7 +56,7 @@ export default function ChatbotWidget({ userId = "guest", apiBaseUrl }: ChatbotW
     );
   }
 
-  // --- TRẠNG THÁI MỞ (CỬA SỔ CHAT) ---
+  // --- TRẠNG THÁI MỞ ---
   return (
     <div className="fixed bottom-6 right-6 w-80 sm:w-96 h-[500px] bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden z-50 animate-fade-in-up font-sans">
       
@@ -144,7 +85,6 @@ export default function ChatbotWidget({ userId = "guest", apiBaseUrl }: ChatbotW
       {/* MESSAGE LIST */}
       <div className="flex-1 px-3 py-4 overflow-y-auto bg-gray-50 space-y-4">
         
-        {/* Tin nhắn chào mừng nếu chưa có lịch sử */}
         {messages.length === 0 && !loading && (
            <div className="text-center text-xs text-gray-400 mt-4">
               👋 Chào bạn! Mình có thể giúp gì cho chuyến đi sắp tới?
@@ -158,37 +98,26 @@ export default function ChatbotWidget({ userId = "guest", apiBaseUrl }: ChatbotW
               key={index}
               className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
             >
-              {/* Avatar Bot nhỏ bên cạnh tin nhắn */}
               {!isUser && (
                   <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs mr-2 mt-1 shrink-0">
                       🤖
                   </div>
               )}
 
-              {/* Bong bóng chat */}
               <div
                 className={`
-                  max-w-[85%]
-                  px-3 py-2
-                  rounded-2xl
-                  text-sm
-                  shadow-sm
-                  ${
-                    isUser
-                      ? "bg-blue-600 text-white rounded-br-none"
-                      : "bg-white text-gray-800 border border-gray-200 rounded-bl-none"
-                  }
+                  max-w-[85%] px-3 py-2 rounded-2xl text-sm shadow-sm
+                  ${isUser 
+                    ? "bg-blue-600 text-white rounded-br-none" 
+                    : "bg-white text-gray-800 border border-gray-200 rounded-bl-none"}
                 `}
               >
-                {/* Nếu chưa có component MarkdownMessage thì dùng thẻ p */}
                  <MarkdownMessage content={m.message} /> 
-                 {/* <p className="whitespace-pre-wrap">{m.message}</p> */}
               </div>
             </div>
           );
         })}
 
-        {/* Hiệu ứng đang gõ... */}
         {loading && (
           <div className="flex justify-start items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs">🤖</div>
@@ -217,7 +146,7 @@ export default function ChatbotWidget({ userId = "guest", apiBaseUrl }: ChatbotW
             className="flex-1 bg-transparent text-gray-700 text-sm px-3 py-2 focus:outline-none disabled:opacity-50"
           />
           <button
-            onClick={handleSendMessage}
+            onClick={handleSendClick}
             disabled={!inputValue.trim() || loading}
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                 inputValue.trim() && !loading 
